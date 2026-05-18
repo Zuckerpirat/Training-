@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#080808">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Training">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <title>Trainingsplan</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    body{background:#080808;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
+    #root{min-height:100vh;min-height:100dvh}
+    #loading{position:fixed;inset:0;background:#080808;display:flex;align-items:center;justify-content:center;color:#fff;font-family:monospace;font-size:13px;letter-spacing:3px;flex-direction:column;gap:16px;z-index:999}
+    .spinner{width:24px;height:24px;border:2px solid #333;border-top-color:#FF4D1C;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{opacity:1}
+    select option{background:#111;color:#fff}
+  </style>
+</head>
+<body>
+  <div id="loading"><div class="spinner"></div>LADEN…</div>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.4/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+    const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } = Recharts;
+
+    // ── LocalStorage helpers ──────────────────────────────────────
+    const LS = {
+      get:  k       => { try { return localStorage.getItem(k); }              catch(_){ return null; } },
+      set:  (k,v)   => { try { localStorage.setItem(k,v); }                   catch(_){} },
+      keys: prefix  => { try { return Object.keys(localStorage).filter(k=>k.startsWith(prefix)).sort(); } catch(_){ return []; } },
+    };
+
+    // ── Themes ────────────────────────────────────────────────────
+    const THEMES = {
+      dark:  {name:"Dark",  emoji:"🌑",bg:"#080808",surface:"#131313",surface2:"#1c1c1c",border:"#2a2a2a",text:"#f0f0f0",textMuted:"#777",push:"#FF4D1C",pull:"#00AAFF",legs:"#00DD77",inputBg:"#0d0d0d"},
+      light: {name:"Hell",  emoji:"☀️",bg:"#f4f3ef",surface:"#ffffff",surface2:"#eeede8",border:"#dddcd5",text:"#1a1a1a",textMuted:"#999",push:"#D63000",pull:"#0077BB",legs:"#007744",inputBg:"#f4f3ef"},
+      ocean: {name:"Ozean", emoji:"🌊",bg:"#0b1120",surface:"#131d30",surface2:"#1a2640",border:"#243050",text:"#ddeaff",textMuted:"#5575aa",push:"#FF6B6B",pull:"#4ECDC4",legs:"#FFE66D",inputBg:"#0b1120"},
+      forest:{name:"Forest",emoji:"🌿",bg:"#0b140a",surface:"#121c10",surface2:"#192614",border:"#223318",text:"#c8e0b0",textMuted:"#527038",push:"#FF8C42",pull:"#7BC67E",legs:"#FFD166",inputBg:"#0b140a"},
+    };
+
+    // ── Plan data ─────────────────────────────────────────────────
+    const DAYS_DATA = {
+      push:{label:"PUSH",icon:"⬆",subtitle:"Brust · Schulter · Trizeps",exercises:[
+        {name:"Bankdrücken am Gerät",    sets:3,repsTarget:"10–12",group:"Brust"},
+        {name:"Schrägbank Brustpresse",  sets:3,repsTarget:"10–12",group:"Brust"},
+        {name:"Butterfly",               sets:3,repsTarget:"10–12",group:"Brust"},
+        {name:"Seitwärtsheben am Gerät", sets:3,repsTarget:"10–12",group:"Schulter"},
+        {name:"Trizeps V-Griff Pushdown",sets:3,repsTarget:"10–12",group:"Trizeps"},
+        {name:"Trizeps Turm Einarmig",   sets:3,repsTarget:"10–12",group:"Trizeps"},
+      ]},
+      pull:{label:"PULL",icon:"⬇",subtitle:"Rücken · Bizeps · hint. Schulter",exercises:[
+        {name:"Lat-Ziehen breiter Griff",sets:3,repsTarget:"10–12",group:"Rücken"},
+        {name:"Kabelzug neutraler Griff",sets:3,repsTarget:"10–12",group:"Rücken"},
+        {name:"Rudern breiter Griff",    sets:3,repsTarget:"10–12",group:"Rücken"},
+        {name:"Face Pulls",              sets:3,repsTarget:"10–12",group:"hint. Schulter"},
+        {name:"Hammer Curls",            sets:3,repsTarget:"10–12",group:"Bizeps"},
+        {name:"Einarmige Preacher Curls",sets:3,repsTarget:"10–12",group:"Bizeps"},
+      ]},
+      legs:{label:"LEGS",icon:"🦵",subtitle:"Beine · Core · Unterarm",exercises:[
+        {name:"Legpress",               sets:4,repsTarget:"10–12",group:"Quad"},
+        {name:"Beinstrecker",           sets:3,repsTarget:"10–12",group:"Quad"},
+        {name:"Beinbeuger",             sets:3,repsTarget:"10–12",group:"Hamstrings"},
+        {name:"Wadenmaschine sitzend",  sets:3,repsTarget:"10–12",group:"Waden"},
+        {name:"Hyperextensions",        sets:3,repsTarget:"10–12",group:"unterer Rücken"},
+        {name:"Unterarmcurls am Kabel", sets:3,repsTarget:"10–12",group:"Unterarm"},
+      ]},
+    };
+
+    const TYPE_DAYS = {
+      A:{push:[1,6],pull:[4],legs:[5]},
+      B:{push:[1,6],pull:[3],legs:[4]},
+    };
+
+    const ALL_EXERCISES = Object.values(DAYS_DATA).flatMap(d=>d.exercises.map(e=>e.name));
+    const dateToKey = d => d.toISOString().slice(0,10).replace(/-/g,"");
+    const sessKey   = (dk,type) => `sess_${dk}_${type}`;
+
+    function loadAllBests() {
+      const b = {};
+      LS.keys('sess_').forEach(key => {
+        try {
+          const data = JSON.parse(LS.get(key)||'{}');
+          Object.entries(data.sets||{}).forEach(([name,sets]) => {
+            const mx = Math.max(...sets.map(s=>parseFloat(s.weight)||0));
+            if (mx>0 && (!b[name]||mx>b[name])) b[name]=mx;
+          });
+        } catch(_){}
+      });
+      return b;
+    }
+
+    // ── Main App ──────────────────────────────────────────────────
+    function App() {
+      const initPrefs = () => { try { return JSON.parse(LS.get('prefs')||'{}'); } catch(_){ return {}; } };
+
+      const [themeKey,   setThemeKey]   = useState(() => initPrefs().theme    || 'dark');
+      const [schedule,   setSchedule]   = useState(() => initPrefs().schedule || 'A');
+      const [view,       setView]       = useState('plan');
+      const [selPlan,    setSelPlan]    = useState('push');
+      const [expandedEx, setExpandedEx] = useState(null);
+      const [inlineSets, setInlineSets] = useState({});
+      const [bests,      setBests]      = useState(() => loadAllBests());
+      const [wkActive,   setWkActive]   = useState(false);
+      const [wkType,     setWkType]     = useState('push');
+      const [wkSets,     setWkSets]     = useState({});
+      const [wkDate,     setWkDate]     = useState('');
+      const [saving,     setSaving]     = useState(false);
+      const [saved,      setSaved]      = useState(false);
+      const [progEx,     setProgEx]     = useState('Bankdrücken am Gerät');
+      const [progData,   setProgData]   = useState([]);
+
+      const T  = THEMES[themeKey];
+      const gc = type => T[type] || T.push;
+
+      // Save prefs
+      useEffect(() => {
+        LS.set('prefs', JSON.stringify({theme:themeKey, schedule}));
+      }, [themeKey, schedule]);
+
+      // Load inline sets when plan changes
+      useEffect(() => {
+        const dk = dateToKey(new Date());
+        try {
+          const raw = LS.get(sessKey(dk,selPlan));
+          setInlineSets(raw ? JSON.parse(raw).sets||{} : {});
+        } catch(_){ setInlineSets({}); }
+        setExpandedEx(null);
+      }, [selPlan]);
+
+      // Load progress data
+      useEffect(() => {
+        if (view !== 'progress') return;
+        const data = [];
+        LS.keys('sess_').forEach(key => {
+          try {
+            const s = JSON.parse(LS.get(key)||'{}');
+            const sets = s.sets?.[progEx];
+            if (!sets) return;
+            const mx = Math.max(...sets.map(x=>parseFloat(x.weight)||0));
+            if (mx>0) data.push({date:s.dateKey, weight:mx});
+          } catch(_){}
+        });
+        data.sort((a,b)=>a.date.localeCompare(b.date));
+        setProgData(data);
+      }, [progEx, view]);
+
+      // Service worker
+      useEffect(() => {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('./sw.js').catch(()=>{});
+        }
+      }, []);
+
+      // ── Inline helpers ──
+      const saveInline = (type, sets) => {
+        const dk = dateToKey(new Date());
+        LS.set(sessKey(dk,type), JSON.stringify({type,dateKey:dk,sets,ts:Date.now()}));
+      };
+
+      const toggleEx = name => {
+        setExpandedEx(prev => prev===name ? null : name);
+        if (!inlineSets[name]) {
+          const newSets = {...inlineSets, [name]:[{weight:'',reps:''}]};
+          setInlineSets(newSets);
+        }
+      };
+
+      const addInlineSet = name => {
+        const newSets = {...inlineSets, [name]:[...(inlineSets[name]||[]),{weight:'',reps:''}]};
+        setInlineSets(newSets); saveInline(selPlan,newSets);
+      };
+      const removeInlineSet = (name,idx) => {
+        const newSets = {...inlineSets,[name]:inlineSets[name].filter((_,i)=>i!==idx)};
+        setInlineSets(newSets); saveInline(selPlan,newSets);
+      };
+      const updateInlineSet = (name,idx,field,val) => {
+        const updated = inlineSets[name].map((s,i)=>i===idx?{...s,[field]:val}:s);
+        const newSets = {...inlineSets,[name]:updated};
+        setInlineSets(newSets); saveInline(selPlan,newSets);
+      };
+
+      // ── Workout helpers ──
+      const startWorkout = type => {
+        const dk = dateToKey(new Date());
+        setWkDate(dk); setWkType(type);
+        const init = {};
+        DAYS_DATA[type].exercises.forEach(ex=>{ init[ex.name]=[{weight:'',reps:''}]; });
+        setWkSets(init); setWkActive(true); setView('workout');
+      };
+      const addWkSet    = n => setWkSets(p=>({...p,[n]:[...p[n],{weight:'',reps:''}]}));
+      const removeWkSet = (n,i) => setWkSets(p=>({...p,[n]:p[n].filter((_,j)=>j!==i)}));
+      const updateWkSet = (n,i,f,v) => setWkSets(p=>({...p,[n]:p[n].map((s,j)=>j===i?{...s,[f]:v}:s)}));
+
+      const finishWorkout = () => {
+        setSaving(true);
+        LS.set(sessKey(wkDate,wkType), JSON.stringify({type:wkType,dateKey:wkDate,sets:wkSets,ts:Date.now()}));
+        setBests(loadAllBests());
+        setSaved(true);
+        setTimeout(()=>{ setWkActive(false); setSaved(false); setView('progress'); setSaving(false); }, 1200);
+      };
+
+      // ── Week data ──
+      const today = new Date();
+      const monOff = today.getDay()===0?-6:1-today.getDay();
+      const weekDates = Array.from({length:7},(_,i)=>{ const d=new Date(today); d.setDate(today.getDate()+monOff+i); return d; });
+      const typeDays  = TYPE_DAYS[schedule];
+
+      // ── Shared styles ──
+      const card = {background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,overflow:'hidden'};
+      const inp  = (hasVal,color) => ({flex:1,padding:'8px',borderRadius:8,border:`1px solid ${hasVal?color+'66':T.border}`,background:T.inputBg,color:T.text,fontSize:16,fontFamily:'inherit',outline:'none',textAlign:'center'});
+
+      // ── Plan ──────────────────────────────────────────────────────
+      const renderPlan = () => {
+        const day   = DAYS_DATA[selPlan];
+        const color = gc(selPlan);
+        const hlDays = typeDays[selPlan]||[];
+        return (
+          <div>
+            {/* Week strip */}
+            <div style={{padding:'14px 18px 12px',borderBottom:`1px solid ${T.border}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                <div style={{fontSize:10,letterSpacing:3,color:T.textMuted}}>DIESE WOCHE</div>
+                <div style={{display:'flex',gap:4}}>
+                  {['A','B'].map(k=>(
+                    <button key={k} onClick={()=>setSchedule(k)} style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${schedule===k?color:T.border}`,background:schedule===k?color+'22':'transparent',color:schedule===k?color:T.textMuted,fontSize:9,cursor:'pointer',fontFamily:'inherit'}}>
+                      {k==='A'?'Mo·Do·Fr·Sa':'Mo·Mi·Do·Sa'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:5}}>
+                {weekDates.map((date,i)=>{
+                  const wi = i===6?0:i+1;
+                  const isHl = hlDays.includes(wi);
+                  const isToday = date.toDateString()===today.toDateString();
+                  return (
+                    <div key={i} style={{flex:1,textAlign:'center',padding:'8px 2px',borderRadius:8,background:isHl?color+'25':isToday?T.surface2:'transparent',border:`1px solid ${isHl?color+'66':isToday?T.border:'transparent'}`,transition:'all 0.2s'}}>
+                      <div style={{fontSize:8,marginBottom:4,color:isHl?color:T.textMuted}}>{['Mo','Di','Mi','Do','Fr','Sa','So'][i]}</div>
+                      <div style={{fontSize:12,fontWeight:isHl||isToday?700:400,color:isHl?color:T.text}}>{date.getDate()}</div>
+                      {isHl && <div style={{width:5,height:5,borderRadius:'50%',background:color,margin:'4px auto 0'}}/>}
+                      {isToday&&!isHl && <div style={{width:4,height:4,borderRadius:'50%',background:T.textMuted,margin:'4px auto 0',opacity:0.5}}/>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Day tabs */}
+            <div style={{display:'flex',gap:8,padding:'14px 18px',borderBottom:`1px solid ${T.border}`}}>
+              {Object.entries(DAYS_DATA).map(([key,d])=>(
+                <button key={key} onClick={()=>setSelPlan(key)} style={{flex:1,padding:'11px 4px',borderRadius:10,border:selPlan===key?`2px solid ${gc(key)}`:`2px solid ${T.border}`,background:selPlan===key?gc(key)+'18':'transparent',color:selPlan===key?gc(key):T.textMuted,fontSize:12,fontWeight:700,letterSpacing:2,cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s'}}>
+                  <div style={{fontSize:16,marginBottom:2}}>{d.icon}</div>{d.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Exercises */}
+            <div style={{padding:'14px 18px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:24,fontWeight:700,color,letterSpacing:-1}}>{day.label} DAY</div>
+                  <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>{day.subtitle}</div>
+                </div>
+                <button onClick={()=>startWorkout(selPlan)} style={{padding:'10px 16px',borderRadius:10,border:'none',background:color,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',boxShadow:`0 4px 14px ${color}44`}}>▶ START</button>
+              </div>
+
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {day.exercises.map((ex,i)=>{
+                  const isOpen = expandedEx===ex.name;
+                  const sets   = inlineSets[ex.name]||[];
+                  const done   = sets.filter(s=>s.weight&&s.reps).length;
+                  const best   = bests[ex.name];
+                  return (
+                    <div key={i} style={card}>
+                      <div onClick={()=>toggleEx(ex.name)} style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:isOpen?color+'10':'transparent',borderBottom:isOpen?`1px solid ${T.border}`:'none',transition:'background 0.2s'}}>
+                        <div style={{width:26,height:26,borderRadius:'50%',background:done>0?color:color+'22',color:done>0?'#fff':color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,transition:'all 0.2s'}}>
+                          {done>0?'✓':i+1}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:T.text}}>{ex.name}</div>
+                          <div style={{fontSize:10,color:T.textMuted,marginTop:2}}>{ex.group} · {ex.sets}×{ex.repsTarget}{best?` · Best: ${best} kg`:''}</div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          {done>0 && <div style={{fontSize:10,color,fontWeight:700}}>{done} Satz</div>}
+                          <div style={{fontSize:18,color:isOpen?color:T.textMuted,transform:isOpen?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s'}}>⌄</div>
+                        </div>
+                      </div>
+                      {isOpen && (
+                        <div style={{padding:'12px 14px'}}>
+                          <div style={{display:'flex',gap:8,marginBottom:8}}>
+                            <div style={{width:26,fontSize:9,color:T.textMuted}}>#</div>
+                            <div style={{flex:1,fontSize:9,color:T.textMuted,letterSpacing:1}}>GEWICHT (KG)</div>
+                            <div style={{flex:1,fontSize:9,color:T.textMuted,letterSpacing:1}}>WIEDERH.</div>
+                            <div style={{width:26}}/>
+                          </div>
+                          {sets.map((s,si)=>(
+                            <div key={si} style={{display:'flex',gap:8,marginBottom:7,alignItems:'center'}}>
+                              <div style={{width:26,height:26,borderRadius:'50%',background:s.weight&&s.reps?color:color+'22',color:s.weight&&s.reps?'#fff':color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0,transition:'all 0.2s'}}>
+                                {s.weight&&s.reps?'✓':si+1}
+                              </div>
+                              <input type="number" placeholder="–" value={s.weight} onChange={e=>updateInlineSet(ex.name,si,'weight',e.target.value)} style={inp(s.weight,color)}/>
+                              <input type="number" placeholder="–" value={s.reps}   onChange={e=>updateInlineSet(ex.name,si,'reps',  e.target.value)} style={inp(s.reps,  color)}/>
+                              <button onClick={()=>removeInlineSet(ex.name,si)} style={{width:26,height:26,borderRadius:'50%',border:`1px solid ${T.border}`,background:'transparent',color:T.textMuted,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+                            </div>
+                          ))}
+                          <button onClick={()=>addInlineSet(ex.name)} style={{width:'100%',padding:'7px',borderRadius:8,border:`1px dashed ${T.border}`,background:'transparent',color:T.textMuted,cursor:'pointer',fontSize:12,fontFamily:'inherit',marginTop:2}}>+ Satz hinzufügen</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // ── Workout ───────────────────────────────────────────────────
+      const renderWorkout = () => {
+        if (!wkActive) return (
+          <div style={{padding:'40px 18px',textAlign:'center'}}>
+            <div style={{fontSize:52,marginBottom:16}}>💪</div>
+            <div style={{fontSize:18,fontWeight:700,color:T.text,marginBottom:6}}>Kein aktives Training</div>
+            <div style={{fontSize:12,color:T.textMuted,marginBottom:24}}>Starte direkt einen Tag:</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {Object.entries(DAYS_DATA).map(([key,d])=>(
+                <button key={key} onClick={()=>startWorkout(key)} style={{padding:'16px',borderRadius:12,border:`1px solid ${T.border}`,background:T.surface,color:gc(key),fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit',letterSpacing:2}}>
+                  {d.icon} {d.label} starten
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+
+        const day=DAYS_DATA[wkType], color=gc(wkType);
+        return (
+          <div>
+            <div style={{padding:'14px 18px',borderBottom:`1px solid ${T.border}`,background:color+'12',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:60,zIndex:5}}>
+              <div>
+                <div style={{fontSize:18,fontWeight:700,color}}>{day.icon} {day.label} DAY</div>
+                <div style={{fontSize:10,color:T.textMuted}}>{new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
+              </div>
+              <button onClick={finishWorkout} disabled={saving} style={{padding:'10px 18px',borderRadius:10,border:'none',background:saved?'#00AA55':color,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',transition:'background 0.3s'}}>
+                {saved?'✓ Gespeichert':saving?'…':'Fertig ✓'}
+              </button>
+            </div>
+            <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:12}}>
+              {day.exercises.map((ex,i)=>{
+                const sets=wkSets[ex.name]||[], best=bests[ex.name];
+                return (
+                  <div key={i} style={card}>
+                    <div style={{padding:'10px 14px',borderBottom:`1px solid ${T.border}`,background:color+'0d',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:T.text}}>{ex.name}</div>
+                        <div style={{fontSize:10,color:T.textMuted}}>Ziel: {ex.sets}×{ex.repsTarget} · {ex.group}</div>
+                      </div>
+                      {best&&<div style={{fontSize:10,textAlign:'right',lineHeight:1.5}}><div style={{color:T.textMuted}}>Best</div><div style={{fontWeight:700,color}}>{best} kg</div></div>}
+                    </div>
+                    <div style={{padding:'10px 14px'}}>
+                      <div style={{display:'flex',gap:8,marginBottom:8}}>
+                        <div style={{width:26,fontSize:9,color:T.textMuted}}>#</div>
+                        <div style={{flex:1,fontSize:9,color:T.textMuted,letterSpacing:1}}>KG</div>
+                        <div style={{flex:1,fontSize:9,color:T.textMuted,letterSpacing:1}}>WDHL.</div>
+                        <div style={{width:26}}/>
+                      </div>
+                      {sets.map((s,si)=>(
+                        <div key={si} style={{display:'flex',gap:8,marginBottom:6,alignItems:'center'}}>
+                          <div style={{width:26,height:26,borderRadius:'50%',background:color+'22',color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{si+1}</div>
+                          <input type="number" placeholder="–" value={s.weight} onChange={e=>updateWkSet(ex.name,si,'weight',e.target.value)} style={inp(s.weight,color)}/>
+                          <input type="number" placeholder="–" value={s.reps}   onChange={e=>updateWkSet(ex.name,si,'reps',  e.target.value)} style={inp(s.reps,  color)}/>
+                          <button onClick={()=>removeWkSet(ex.name,si)} style={{width:26,height:26,borderRadius:'50%',border:`1px solid ${T.border}`,background:'transparent',color:T.textMuted,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+                        </div>
+                      ))}
+                      <button onClick={()=>addWkSet(ex.name)} style={{width:'100%',padding:'7px',borderRadius:8,border:`1px dashed ${T.border}`,background:'transparent',color:T.textMuted,cursor:'pointer',fontSize:12,fontFamily:'inherit',marginTop:2}}>+ Satz</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      };
+
+      // ── Progress ──────────────────────────────────────────────────
+      const renderProgress = () => {
+        const total=progData.length, first=total>0?progData[0].weight:null, last=total>0?progData[total-1].weight:null;
+        const diff=total>1?(last-first).toFixed(1):null;
+        return (
+          <div style={{padding:'18px'}}>
+            <div style={{fontSize:10,letterSpacing:3,color:T.textMuted,marginBottom:10}}>ÜBUNG AUSWÄHLEN</div>
+            <select value={progEx} onChange={e=>setProgEx(e.target.value)} style={{width:'100%',padding:'11px 14px',borderRadius:10,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontSize:13,fontFamily:'inherit',marginBottom:16,outline:'none'}}>
+              {ALL_EXERCISES.map(ex=><option key={ex} value={ex}>{ex}</option>)}
+            </select>
+            <div style={{display:'flex',gap:8,marginBottom:16}}>
+              {[{l:'Sessions',v:total||'–'},{l:'Start',v:first?`${first} kg`:'–'},{l:'Aktuell',v:last?`${last} kg`:'–'},{l:'Zuwachs',v:diff!==null?`+${diff} kg`:'–'}].map(stat=>(
+                <div key={stat.l} style={{flex:1,...card,padding:'11px 6px',textAlign:'center'}}>
+                  <div style={{fontSize:15,fontWeight:700,color:T.push}}>{stat.v}</div>
+                  <div style={{fontSize:8,color:T.textMuted,marginTop:3,letterSpacing:1}}>{stat.l.toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{...card,padding:'16px 6px 10px'}}>
+              {total===0?(
+                <div style={{textAlign:'center',padding:'36px 20px',color:T.textMuted,fontSize:13}}>
+                  Noch keine Daten.<br/><span style={{fontSize:11}}>Trage ein Training ein.</span>
+                </div>
+              ):(
+                <ResponsiveContainer width="100%" height={210}>
+                  <LineChart data={progData} margin={{top:4,right:14,left:-8,bottom:0}}>
+                    <CartesianGrid stroke={T.border} strokeDasharray="3 3" vertical={false}/>
+                    <XAxis dataKey="date" tick={{fontSize:9,fill:T.textMuted,fontFamily:'inherit'}} tickFormatter={v=>`${v.slice(6,8)}.${v.slice(4,6)}.`} axisLine={{stroke:T.border}} tickLine={false}/>
+                    <YAxis tick={{fontSize:9,fill:T.textMuted,fontFamily:'inherit'}} domain={['auto','auto']} unit="kg" axisLine={false} tickLine={false}/>
+                    <Tooltip contentStyle={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,fontFamily:'inherit',fontSize:12}} labelStyle={{color:T.textMuted}} itemStyle={{color:T.push}} formatter={v=>[`${v} kg`,'Max. Gewicht']} labelFormatter={v=>`${v.slice(6,8)}.${v.slice(4,6)}.${v.slice(0,4)}`}/>
+                    <Line type="monotone" dataKey="weight" stroke={T.push} strokeWidth={2.5} dot={{fill:T.push,r:4,strokeWidth:0}} activeDot={{r:7,strokeWidth:0}}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            {total>1&&<div style={{marginTop:12,padding:'12px 14px',borderRadius:10,background:T.push+'12',border:`1px solid ${T.push}30`,fontSize:12,color:T.text,lineHeight:1.7}}>
+              📈 Von <strong style={{color:T.push}}>{first} kg</strong> auf <strong style={{color:T.push}}>{last} kg</strong> — <strong style={{color:T.push}}>+{diff} kg</strong> in {total} Sessions.
+            </div>}
+          </div>
+        );
+      };
+
+      return (
+        <div style={{minHeight:'100vh',minHeight:'100dvh',background:T.bg,color:T.text,fontFamily:"'DM Mono','SF Mono','Courier New',monospace",maxWidth:480,margin:'0 auto',display:'flex',flexDirection:'column',transition:'background 0.25s,color 0.25s'}}>
+          {/* Header */}
+          <div style={{padding:'18px 18px 14px',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:T.bg,zIndex:10}}>
+            <div>
+              <div style={{fontSize:9,letterSpacing:4,color:T.textMuted}}>PPL SPLIT</div>
+              <div style={{fontSize:20,fontWeight:700,letterSpacing:-0.5}}>Trainingsplan</div>
+            </div>
+            <div style={{display:'flex',gap:5}}>
+              {Object.entries(THEMES).map(([key,t])=>(
+                <button key={key} onClick={()=>setThemeKey(key)} title={t.name} style={{width:30,height:30,borderRadius:'50%',border:themeKey===key?`2.5px solid ${T.push}`:`2px solid ${T.border}`,background:t.bg,cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {t.emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div style={{flex:1,overflowY:'auto',paddingBottom:72}}>
+            {view==='plan'     && renderPlan()}
+            {view==='workout'  && renderWorkout()}
+            {view==='progress' && renderProgress()}
+          </div>
+
+          {/* Bottom nav */}
+          <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:480,background:T.surface,borderTop:`1px solid ${T.border}`,display:'flex',paddingBottom:'env(safe-area-inset-bottom, 12px)'}}>
+            {[{key:'plan',label:'Plan',icon:'📋'},{key:'workout',label:'Training',icon:'💪'},{key:'progress',label:'Fortschritt',icon:'📈'}].map(nav=>(
+              <button key={nav.key} onClick={()=>setView(nav.key)} style={{flex:1,padding:'10px 4px 0',border:'none',background:'transparent',cursor:'pointer',fontFamily:'inherit',borderTop:`2px solid ${view===nav.key?T.push:'transparent'}`}}>
+                <div style={{fontSize:20}}>{nav.icon}</div>
+                <div style={{fontSize:9,marginTop:3,letterSpacing:1,color:view===nav.key?T.push:T.textMuted,fontWeight:view===nav.key?700:400}}>{nav.label.toUpperCase()}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App/>);
+    document.getElementById('loading').style.display = 'none';
+  </script>
+</body>
+</html>

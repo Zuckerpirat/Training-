@@ -1,0 +1,13 @@
+{
+  "name": "Trainingsplan PPL",
+  "short_name": "Training",
+  "description": "Push Pull Legs Trainingsplan & Tracker",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080808",
+  "theme_color": "#FF4D1C",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
