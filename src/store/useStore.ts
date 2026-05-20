@@ -6,8 +6,18 @@ import type { Plan, Profile, SchedKey, SessionData, SetEntry, ThemeKey } from '.
 
 type ViewKey = 'home' | 'plan' | 'workout' | 'progress' | 'profile';
 
+const PLAN_VERSION = 2; // v2 = Upper/Lower/Push/Pull
 function loadPlan(): Plan {
-  return LS.getJ<Plan>('plan') || (JSON.parse(JSON.stringify(DEFAULT_PLAN)) as Plan);
+  const stored = LS.getJ<Plan>('plan');
+  const ver = LS.getJ<number>('planVersion');
+  // Force-migrate alte PPL-Pläne (kein upper/lower) auf neuen U/L/P/P-Default
+  if (!stored || ver !== PLAN_VERSION || !stored.upper || !stored.lower) {
+    const fresh = JSON.parse(JSON.stringify(DEFAULT_PLAN)) as Plan;
+    LS.set('plan', fresh);
+    LS.set('planVersion', PLAN_VERSION);
+    return fresh;
+  }
+  return stored;
 }
 function loadProfile(): Profile {
   return (
