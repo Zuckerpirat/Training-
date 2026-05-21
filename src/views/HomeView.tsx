@@ -53,7 +53,7 @@ export default function HomeView() {
     <div className="slide-up" style={{ padding: 18 }}>
       <div className="mb-5">
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>
-          {profile.name ? `Hey, ${profile.name}! 👋` : 'Hey! 👋'}
+          Hey Julian, lass uns starten
         </div>
         <div className="mt-1" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           {today.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' })}
