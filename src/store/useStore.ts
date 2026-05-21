@@ -51,6 +51,24 @@ function loadInlineData(type: string): Record<string, SetEntry[]> {
   } catch { return {}; }
 }
 
+interface WorkoutDraft {
+  wkOn: boolean;
+  wkType: string;
+  wkSets: Record<string, SetEntry[]>;
+  wkDate: string;
+}
+
+function loadWorkoutDraft(): WorkoutDraft | null {
+  const draft = LS.getJ<WorkoutDraft>('workoutDraft');
+  if (!draft?.wkOn || !draft.wkType || !draft.wkDate) return null;
+  return {
+    wkOn: true,
+    wkType: draft.wkType,
+    wkDate: draft.wkDate,
+    wkSets: draft.wkSets || {},
+  };
+}
+
 const prefs = LS.getJ<{ theme?: ThemeKey; sched?: SchedKey }>('prefs') || {};
 
 interface StoreState {
@@ -111,10 +129,16 @@ function persistInline(type: string, sets: Record<string, SetEntry[]>): void {
   LS.set(sk(dk(), type), { type, dateKey: dk(), sets, ts: Date.now() });
 }
 
+function persistWorkoutDraft(draft: WorkoutDraft): void {
+  LS.set('workoutDraft', draft);
+}
+
+const workoutDraft = loadWorkoutDraft();
+
 export const useStore = create<StoreState>((set, get) => ({
   theme: prefs.theme || 'dark',
   sched: prefs.sched || 'A',
-  view: 'home',
+  view: workoutDraft?.wkOn ? 'workout' : 'home',
   plan: loadPlan(),
   selPlan: 'upper',
   openEx: null,
@@ -122,10 +146,10 @@ export const useStore = create<StoreState>((set, get) => ({
   addExForm: null,
   inline: loadInlineData('upper'),
   inlineType: 'upper',
-  wkOn: false,
-  wkType: 'upper',
-  wkSets: {},
-  wkDate: '',
+  wkOn: workoutDraft?.wkOn || false,
+  wkType: workoutDraft?.wkType || 'upper',
+  wkSets: workoutDraft?.wkSets || {},
+  wkDate: workoutDraft?.wkDate || '',
   saved: false,
   progEx: 'Brustpresse Maschine',
   profile: loadProfile(),
@@ -161,6 +185,7 @@ export const useStore = create<StoreState>((set, get) => ({
     let inline = s.inline;
     if (open && ex && !inline[ex.n]) {
       inline = { ...inline, [ex.n]: [{ w: '', r: '' }] };
+      persistInline(s.inlineType, inline);
     }
     set({ openEx: open, inline });
   },
@@ -219,39 +244,48 @@ export const useStore = create<StoreState>((set, get) => ({
     const wkSets: Record<string, SetEntry[]> = {};
     st.plan[type].ex.forEach(ex => { wkSets[ex.n] = [{ w: '', r: '' }]; });
     set({ wkType: type, wkDate: dk(), wkOn: true, saved: false, wkSets, view: 'workout' });
+    persistWorkoutDraft({ wkOn: true, wkType: type, wkDate: dk(), wkSets });
   },
   addWkSet(name) {
-    const wkSets = { ...get().wkSets };
+    const st = get();
+    const wkSets = { ...st.wkSets };
     if (!wkSets[name]) wkSets[name] = [];
     wkSets[name] = [...wkSets[name], { w: '', r: '' }];
     set({ wkSets });
+    persistWorkoutDraft({ wkOn: st.wkOn, wkType: st.wkType, wkDate: st.wkDate, wkSets });
   },
   removeWkSet(name, i) {
-    const wkSets = { ...get().wkSets };
+    const st = get();
+    const wkSets = { ...st.wkSets };
     if (!wkSets[name]) return;
     wkSets[name] = wkSets[name].filter((_, ix) => ix !== i);
     set({ wkSets });
+    persistWorkoutDraft({ wkOn: st.wkOn, wkType: st.wkType, wkDate: st.wkDate, wkSets });
   },
   updateWkSet(name, i, field, v) {
-    const wkSets = { ...get().wkSets };
+    const st = get();
+    const wkSets = { ...st.wkSets };
     if (!wkSets[name]) wkSets[name] = [];
     const list = [...wkSets[name]];
     while (list.length <= i) list.push({ w: '', r: '' });
     list[i] = { ...list[i], [field]: v };
     wkSets[name] = list;
     set({ wkSets });
+    persistWorkoutDraft({ wkOn: st.wkOn, wkType: st.wkType, wkDate: st.wkDate, wkSets });
   },
   finishWorkout() {
     const st = get();
     LS.set(sk(st.wkDate, st.wkType), {
       type: st.wkType, dateKey: st.wkDate, sets: st.wkSets, ts: Date.now(),
     });
+    LS.remove('workoutDraft');
     set({ bests: loadBests(), saved: true });
     setTimeout(() => {
       set({ wkOn: false, saved: false, view: 'home' });
     }, 1400);
   },
   cancelWorkout() {
+    LS.remove('workoutDraft');
     set({ wkOn: false, saved: false });
   },
   setProgEx(n) { set({ progEx: n }); },
