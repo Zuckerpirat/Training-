@@ -5,6 +5,7 @@ import { ACCENT_VAR, SCHED } from '../constants/plan';
 import { dk } from '../utils/dates';
 import { LS } from '../utils/storage';
 import Input from '../components/ui/Input';
+import SetHistoryDropdown from '../components/plan/SetHistoryDropdown';
 import type { SchedKey } from '../types';
 
 function getWorkoutTypeForDate(date: Date, sched: SchedKey): string | null {
@@ -259,6 +260,9 @@ export default function WorkoutView() {
                     </div>
                   </div>
                 ) : null}
+              </div>
+              <div className="px-3.5">
+                <SetHistoryDropdown exName={ex.n} accent={accent} />
               </div>
               <div className="px-3.5 py-2.5">
                 <div className="flex gap-2 mb-2" style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1 }}>

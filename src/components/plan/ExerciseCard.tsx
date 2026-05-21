@@ -1,6 +1,7 @@
 import { ChevronDown, X } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import InlineLogger from './InlineLogger';
+import SetHistoryDropdown from './SetHistoryDropdown';
 import type { Exercise } from '../../types';
 
 interface Props {
@@ -91,7 +92,14 @@ export default function ExerciseCard({ ex, index, accent }: Props) {
           )}
         </div>
       </div>
-      {!editMode && isOpen && <InlineLogger exName={ex.n} sets={sets} accent={accent} />}
+      {!editMode && isOpen && (
+        <>
+          <div className="px-3.5 pt-3.5">
+            <SetHistoryDropdown exName={ex.n} accent={accent} />
+          </div>
+          <InlineLogger exName={ex.n} sets={sets} accent={accent} />
+        </>
+      )}
     </div>
   );
 }
